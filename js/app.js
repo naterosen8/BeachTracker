@@ -68,8 +68,10 @@ function describe(beach, when) {
     parking = crowd >= 4
       ? { text: `${lots}, likely filling up`, score: 1 }
       : { text: `${lots}, probably spaces`, score: 2 };
-  } else {
+  } else if (beach.parkingLots === 0) {
     parking = { text: "No mapped parking nearby: expect street parking", score: 0.5 };
+  } else {
+    parking = { text: "No parking info yet: be the first to report it", score: 1 };
   }
 
   return {
@@ -334,6 +336,9 @@ $("where").addEventListener("submit", async (e) => {
     setStatus(err.message, true);
   }
 });
+
+// Show the distance menu in the visitor's units.
+for (const opt of $("radius").options) opt.textContent = fmtDistance(Number(opt.value)).replace(/\.0 /, " ");
 
 $("when").addEventListener("change", render);
 $("sort").addEventListener("change", render);

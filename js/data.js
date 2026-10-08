@@ -25,24 +25,106 @@ async function getJson(url, options = {}) {
 }
 
 // Named beaches within radiusKm of { lat, lon }, with a count of parking lots near each.
-// Parking is only looked up around the beaches found, which keeps the query light.
+// Overpass gives the richest data (parking, lifeguards, fees) but its free servers are often down
+// or overloaded. Photon is fast and reliable but knows less, so we ask it at the same time and use
+// its answer if Overpass hasn't answered within OVERPASS_BUDGET_MS. After Overpass fails, skip it
+// for a while so the next search is quick.
+const OVERPASS_BUDGET_MS = 8000;
+const OVERPASS_RETRY_MS = 10 * 60 * 1000;
+let overpassDownUntil = 0;
+
 async function findBeaches(center, radiusKm = 25) {
+  const failures = [];
+  const photon = photonSearch("beach", "natural:beach", center, radiusKm, 50);
+  photon.catch(() => {}); // handled below; don't report it as unhandled meanwhile
+  if (Date.now() >= overpassDownUntil) {
+    try {
+      return await overpassBeaches(center, radiusKm, failures);
+    } catch {
+      overpassDownUntil = Date.now() + OVERPASS_RETRY_MS;
+    }
+  }
+  try {
+    return await photonBeaches(await photon, center, radiusKm);
+  } catch (err) {
+    failures.push(err.message);
+  }
+  throw new Error(`Couldn't load beaches: the map servers are busy (${failures.join("; ")})`);
+}
+
+async function overpassBeaches(center, radiusKm, failures) {
   const r = Math.round(radiusKm * 1000);
   const query = `[out:json][timeout:25];
 nwr["natural"="beach"]["name"](around:${r},${center.lat},${center.lon})->.beaches;
 .beaches out tags center 80;
 nwr["amenity"="parking"](around.beaches:${PARKING_NEAR_KM * 1000});
 out center 1000;`;
-  const failures = [];
+  const deadline = Date.now() + OVERPASS_BUDGET_MS;
   for (const url of OVERPASS_URLS) {
+    const timeout = deadline - Date.now();
+    if (timeout < 1000) break;
     try {
-      const json = await getJson(url, { method: "POST", body: new URLSearchParams({ data: query }), timeout: 30000 });
+      const json = await getJson(url, { method: "POST", body: new URLSearchParams({ data: query }), timeout });
       return parseOverpass(json, center);
     } catch (err) {
       failures.push(err.message);
     }
   }
-  throw new Error(`Couldn't load beaches: the map servers are busy (${failures.join("; ")})`);
+  throw new Error("Overpass unavailable");
+}
+
+// Photon search inside a box around a point; returns GeoJSON features.
+async function photonSearch(q, osmTag, center, halfKm, limit) {
+  const dLat = halfKm / 111;
+  const dLon = halfKm / (111 * Math.cos((center.lat * Math.PI) / 180));
+  const params = new URLSearchParams({
+    q,
+    osm_tag: osmTag,
+    bbox: [center.lon - dLon, center.lat - dLat, center.lon + dLon, center.lat + dLat].map((n) => n.toFixed(5)).join(","),
+    lat: center.lat.toFixed(5),
+    lon: center.lon.toFixed(5),
+    limit: String(limit),
+  });
+  return (await getJson(`https://photon.komoot.io/api/?${params}`)).features || [];
+}
+
+const PHOTON_TYPES = { N: "node", W: "way", R: "relation" };
+const PHOTON_PARKING_BEACHES = 15; // look up parking for this many of the nearest beaches
+
+async function photonBeaches(features, center, radiusKm) {
+  const beaches = parsePhotonBeaches(features, center, radiusKm);
+  const nearest = beaches.slice(0, PHOTON_PARKING_BEACHES);
+  const lots = await Promise.all(nearest.map((b) =>
+    photonSearch("parking", "amenity:parking", b, PARKING_NEAR_KM, 30)
+      .then((found) => found.filter((f) => {
+        const [lon, lat] = f.geometry.coordinates;
+        return distanceKm(b, { lat, lon }) <= PARKING_NEAR_KM;
+      }).length)
+      .catch(() => 0)));
+  // Photon misses many unnamed lots, so finding none means "don't know", not "none".
+  nearest.forEach((b, i) => { b.parkingLots = lots[i] || null; });
+  return beaches;
+}
+
+function parsePhotonBeaches(features, center, radiusKm) {
+  const seen = new Set();
+  const beaches = [];
+  for (const f of features) {
+    const p = f.properties || {};
+    const type = PHOTON_TYPES[p.osm_type];
+    const key = (p.name || "").trim().toLowerCase();
+    if (!key || !type || seen.has(key)) continue;
+    const [lon, lat] = f.geometry.coordinates;
+    const b = { id: `osm:${type}/${p.osm_id}`, name: p.name.trim(), lat, lon };
+    b.distanceKm = distanceKm(center, b);
+    if (b.distanceKm > radiusKm) continue;
+    seen.add(key);
+    b.parkingLots = null; // unknown until looked up
+    b.parkingSpaces = 0;
+    b.paidParking = false;
+    beaches.push(b);
+  }
+  return beaches.sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
 function parseOverpass(json, center) {
@@ -234,5 +316,5 @@ async function sendReport({ beachId, crowd, parking, note, slot }) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { parseOverpass, weatherAt, geocode };
+  module.exports = { parseOverpass, parsePhotonBeaches, findBeaches, weatherAt, geocode };
 }

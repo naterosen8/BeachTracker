@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 global.distanceKm = require("../js/crowd.js").distanceKm;
-const { parseOverpass, weatherAt, geocode } = require("../js/data.js");
+const { parseOverpass, parsePhotonBeaches, findBeaches, weatherAt, geocode } = require("../js/data.js");
 
 test("parses beaches, merges duplicates and counts nearby parking", () => {
   const center = { lat: 33.9, lon: -118.42 };
@@ -82,4 +82,42 @@ test("geocode says whether the place is unknown or search is unreachable", async
   t.mock.restoreAll();
   fakeFetch(t, {});
   await assert.rejects(geocode("Ventura"), /isn't reachable right now \(nominatim.openstreetmap.org unreachable; photon.komoot.io unreachable\)/);
+});
+
+const photonFeature = (type, id, name, lon, lat) =>
+  ({ geometry: { coordinates: [lon, lat] }, properties: { osm_type: type, osm_id: id, name } });
+
+test("parses Photon beaches: same ids as OpenStreetMap, no duplicates, within the radius", () => {
+  const center = { lat: 34.4451, lon: -119.2565 };
+  const beaches = parsePhotonBeaches([
+    photonFeature("R", 17606635, "Emma Wood State Beach", -119.33, 34.285),
+    photonFeature("W", 38246794, "Rincon Beach", -119.476, 34.373),
+    photonFeature("W", 448594746, "Rincon beach", -119.477, 34.374),
+    photonFeature("R", 6170634, "Zuma Beach", -118.82, 34.015),
+    photonFeature("N", 1, "", -119.3, 34.3),
+  ], center, 25);
+  assert.deepStrictEqual(beaches.map((b) => [b.id, b.name]), [
+    ["osm:relation/17606635", "Emma Wood State Beach"],
+    ["osm:way/38246794", "Rincon Beach"],
+  ]);
+  assert.strictEqual(beaches[0].parkingLots, null);
+});
+
+test("findBeaches falls back to Photon when Overpass is down, then skips Overpass", async (t) => {
+  const hosts = fakeFetch(t, {
+    "photon.komoot.io": (url) => {
+      const tag = new URL(url).searchParams.get("osm_tag");
+      return [200, { features: tag === "natural:beach"
+        ? [photonFeature("R", 1, "Emma Wood State Beach", -119.33, 34.285)]
+        : [photonFeature("W", 2, "Lot", -119.3302, 34.2851), photonFeature("W", 3, "Far lot", -119.2, 34.4)] }];
+    },
+  });
+  const center = { lat: 34.4451, lon: -119.2565 };
+  const beaches = await findBeaches(center, 25);
+  assert.deepStrictEqual(beaches.map((b) => [b.name, b.parkingLots]), [["Emma Wood State Beach", 1]]);
+  assert.ok(hosts.includes("overpass-api.de"));
+
+  hosts.length = 0;
+  await findBeaches(center, 25);
+  assert.ok(!hosts.some((h) => h.includes("overpass")), `asked ${hosts}`);
 });
