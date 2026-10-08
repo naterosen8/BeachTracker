@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beach Check</title>
+  <meta name="description" content="How busy are the beaches near you? Live reports from beachgoers, parking, weather and directions.">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="beach.css">
+</head>
+<body>
+  <main class="wrap">
+    <p class="eyebrow">Beach Check</p>
+    <h1>Which beach is worth the trip?</h1>
+    <p class="lede">See how crowded nearby beaches are, from reports by people there right now. When nobody has reported, we estimate from the time, season, weather and past reports.</p>
+
+    <form id="where" class="where">
+      <button type="button" id="near-me" class="primary">Use my location</button>
+      <span class="or">or</span>
+      <input id="place" type="search" placeholder="Town or zip code" aria-label="Town or zip code" autocomplete="off">
+      <button type="submit">Search</button>
+    </form>
+
+    <div class="plan" id="plan" hidden>
+      <label>Going
+        <select id="when">
+          <option value="0" selected>now</option>
+          <option value="1">in 1 hour</option>
+          <option value="2">in 2 hours</option>
+          <option value="3">in 3 hours</option>
+          <option value="tomorrow-10">tomorrow morning</option>
+          <option value="tomorrow-14">tomorrow afternoon</option>
+        </select>
+      </label>
+      <label>Sort by
+        <select id="sort">
+          <option value="best" selected>best pick</option>
+          <option value="distance">closest</option>
+          <option value="quiet">least crowded</option>
+          <option value="parking">easiest parking</option>
+        </select>
+      </label>
+      <label>Within
+        <select id="radius">
+          <option value="10">10 km</option>
+          <option value="25" selected>25 km</option>
+          <option value="50">50 km</option>
+        </select>
+      </label>
+    </div>
+
+    <p id="status" class="status" role="status"></p>
+    <p id="shared-note" class="fine" hidden>Reports are saved on this device only until the shared report store is set up (see README).</p>
+
+    <div id="map" class="map" hidden></div>
+    <ol id="beaches" class="beaches"></ol>
+
+    <p class="fine">Beaches and parking from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors. Weather from <a href="https://open-meteo.com/">Open-Meteo</a>. Crowd estimates are guesses: check live reports and conditions before you go, and swim near lifeguards.</p>
+  </main>
+
+  <template id="beach-card">
+    <li class="card">
+      <div class="card-head">
+        <h2 class="name"></h2>
+        <span class="away"></span>
+      </div>
+      <div class="crowd">
+        <span class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        <strong class="crowd-label"></strong>
+        <span class="tag"></span>
+      </div>
+      <p class="basis"></p>
+      <ul class="facts"></ul>
+      <ul class="notes"></ul>
+      <div class="actions">
+        <a class="button directions" target="_blank" rel="noopener">Directions</a>
+        <button type="button" class="report-toggle">I'm here: report</button>
+      </div>
+      <form class="report" hidden>
+        <fieldset>
+          <legend>How crowded is it?</legend>
+          <div class="choices crowd-choices"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Parking</legend>
+          <div class="choices parking-choices"></div>
+        </fieldset>
+        <label class="note-label">Anything else? <span class="fine">(optional)</span>
+          <input name="note" maxlength="140" placeholder="e.g. lot on 5th St is full, rough surf">
+        </label>
+        <div class="actions">
+          <button type="submit" class="primary">Send report</button>
+          <span class="report-msg" role="status"></span>
+        </div>
+      </form>
+    </li>
+  </template>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="js/crowd.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/demo.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
