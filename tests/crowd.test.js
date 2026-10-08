@@ -16,7 +16,7 @@ test("distance and drive time are sensible", () => {
   const hermosa = { lat: 33.8622, lon: -118.4012 };
   const km = distanceKm(santaMonica, hermosa);
   assert.ok(km > 18 && km < 19, `got ${km}`);
-  assert.strictEqual(driveMinutes(km), 36);
+  assert.strictEqual(driveMinutes(km), 25);
   assert.strictEqual(driveMinutes(0), 1);
 });
 

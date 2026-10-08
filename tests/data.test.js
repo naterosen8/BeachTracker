@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 global.distanceKm = require("../js/crowd.js").distanceKm;
-const { parseOverpass, weatherAt } = require("../js/data.js");
+const { parseOverpass, weatherAt, geocode } = require("../js/data.js");
 
 test("parses beaches, merges duplicates and counts nearby parking", () => {
   const center = { lat: 33.9, lon: -118.42 };
@@ -29,4 +29,57 @@ test("weatherAt picks the closest forecast hour", () => {
   const hours = [{ time: 0, tempC: 20 }, { time: 3600e3, tempC: 25 }, { time: 7200e3, tempC: 22 }];
   assert.strictEqual(weatherAt(hours, 3000e3).tempC, 25);
   assert.strictEqual(weatherAt([], 0), null);
+});
+
+// Fakes fetch: answers each host from `routes`, or fails like a blocked network.
+function fakeFetch(t, routes) {
+  const hosts = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    const { host } = new URL(url);
+    hosts.push(host);
+    const route = routes[host];
+    if (!route) throw new TypeError("Failed to fetch");
+    const [status, body] = route(url);
+    return { ok: status === 200, status, json: async () => body };
+  });
+  return hosts;
+}
+
+test("zip codes are looked up on Zippopotam first", async (t) => {
+  const hosts = fakeFetch(t, {
+    "api.zippopotam.us": () => [200, { places: [{ "place name": "Ojai", "state abbreviation": "CA", latitude: "34.4483", longitude: "-119.2457" }] }],
+  });
+  const hit = await geocode("93023");
+  assert.deepStrictEqual(hit, { lat: 34.4483, lon: -119.2457, label: "Ojai, CA 93023" });
+  assert.deepStrictEqual(hosts, ["api.zippopotam.us"]);
+});
+
+test("zip lookup falls back to a structured Nominatim postcode search", async (t) => {
+  let asked;
+  fakeFetch(t, {
+    "nominatim.openstreetmap.org": (url) => {
+      asked = new URL(url).searchParams;
+      return [200, [{ lat: "34.45", lon: "-119.24", display_name: "Ojai, Ventura County, California" }]];
+    },
+  });
+  const hit = await geocode(" 93023-1234 ");
+  assert.strictEqual(asked.get("postalcode"), "93023");
+  assert.strictEqual(asked.get("countrycodes"), "us");
+  assert.strictEqual(hit.label, "Ojai, Ventura County");
+});
+
+test("town names fall back to Photon when Nominatim is down", async (t) => {
+  fakeFetch(t, {
+    "nominatim.openstreetmap.org": () => [503, null],
+    "photon.komoot.io": () => [200, { features: [{ geometry: { coordinates: [-119.29, 34.28] }, properties: { name: "Ventura", state: "California" } }] }],
+  });
+  assert.deepStrictEqual(await geocode("Ventura"), { lat: 34.28, lon: -119.29, label: "Ventura, California" });
+});
+
+test("geocode says whether the place is unknown or search is unreachable", async (t) => {
+  fakeFetch(t, { "nominatim.openstreetmap.org": () => [200, []], "photon.komoot.io": () => [200, { features: [] }] });
+  await assert.rejects(geocode("Nowhereville"), /Couldn't find "Nowhereville"/);
+  t.mock.restoreAll();
+  fakeFetch(t, {});
+  await assert.rejects(geocode("Ventura"), /isn't reachable right now \(nominatim.openstreetmap.org unreachable; photon.komoot.io unreachable\)/);
 });

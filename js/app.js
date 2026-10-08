@@ -280,26 +280,37 @@ async function refreshReports() {
 async function load(center) {
   state.center = center;
   setStatus(`Finding beaches near ${center.label}…`);
-  const radius = Number($("radius").value);
-  const [beaches, weather] = await Promise.allSettled([
-    demo ? Promise.resolve(DEMO_BEACHES.map((b) => ({ ...b, distanceKm: distanceKm(center, b) }))) : findBeaches(center, radius),
-    getWeather(center),
-  ]);
-  if (beaches.status === "rejected") {
-    setStatus(`${beaches.reason.message}. Try again in a minute.`, true);
+  let radius = Number($("radius").value);
+  const lookup = (km) => (demo
+    ? Promise.resolve(DEMO_BEACHES.map((b) => ({ ...b, distanceKm: distanceKm(center, b) })).filter((b) => b.distanceKm <= km))
+    : findBeaches(center, km));
+  const weather = getWeather(center).catch(() => null);
+  let beaches;
+  try {
+    beaches = await lookup(radius);
+    // Inland towns are often a little further from the coast than the default radius.
+    const widest = Number($("radius").options[$("radius").options.length - 1].value);
+    if (!beaches.length && radius < widest) {
+      setStatus(`No beaches within ${fmtDistance(radius)}, looking further…`);
+      radius = widest;
+      $("radius").value = String(widest);
+      beaches = await lookup(radius);
+    }
+  } catch (err) {
+    setStatus(`${err.message}. Try again in a minute.`, true);
     return;
   }
-  state.beaches = beaches.value;
-  state.weather = weather.status === "fulfilled" ? weather.value : null;
+  state.beaches = beaches;
+  state.weather = await weather;
   $("plan").hidden = false;
   if (!state.beaches.length) {
     $("beaches").replaceChildren();
     $("map").hidden = true;
-    setStatus(`No named beaches within ${fmtDistance(radius)} of ${center.label}. Try a wider radius.`);
+    setStatus(`No named beaches within ${fmtDistance(radius)} of ${center.label}.`);
     return;
   }
   await refreshReports();
-  setStatus(`${state.beaches.length} beaches near ${center.label}${state.weather ? "" : " (weather unavailable)"}.`);
+  setStatus(`${state.beaches.length} beaches within ${fmtDistance(radius)} of ${center.label}${state.weather ? "" : " (weather unavailable)"}.`);
 }
 
 $("near-me").addEventListener("click", async () => {

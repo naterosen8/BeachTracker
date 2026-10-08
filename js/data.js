@@ -1,37 +1,48 @@
-// Loads beaches and parking (OpenStreetMap), weather (Open-Meteo), place search (Nominatim),
-// and beachgoer reports (our /api/reports, or this device's storage when that isn't set up).
+// Loads beaches and parking (OpenStreetMap), weather (Open-Meteo), place search (Zippopotam,
+// Nominatim, Photon), and beachgoer reports (our /api/reports, or this device's storage when
+// that isn't set up).
 
+// Public Overpass servers are often busy, so try several.
 const OVERPASS_URLS = [
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
 const PARKING_NEAR_KM = 0.6;
 const LOCAL_KEY = "beachcheck.reports";
+const TIMEOUT_MS = 20000;
 
-async function getJson(url, options) {
-  const res = await fetch(url, options);
-  if (!res.ok) throw new Error(`${new URL(url).host} returned ${res.status}`);
+async function getJson(url, options = {}) {
+  const host = new URL(url).host;
+  let res;
+  try {
+    res = await fetch(url, { ...options, signal: AbortSignal.timeout(options.timeout || TIMEOUT_MS) });
+  } catch (err) {
+    throw new Error(`${host} ${err.name === "TimeoutError" ? "timed out" : "unreachable"}`);
+  }
+  if (!res.ok) throw new Error(`${host} returned ${res.status}`);
   return res.json();
 }
 
 // Named beaches within radiusKm of { lat, lon }, with a count of parking lots near each.
+// Parking is only looked up around the beaches found, which keeps the query light.
 async function findBeaches(center, radiusKm = 25) {
   const r = Math.round(radiusKm * 1000);
   const query = `[out:json][timeout:25];
-(nwr["natural"="beach"]["name"](around:${r},${center.lat},${center.lon}););out center tags 80;
-(nwr["amenity"="parking"](around:${r + 1000},${center.lat},${center.lon}););out center 1500;`;
-  let json;
+nwr["natural"="beach"]["name"](around:${r},${center.lat},${center.lon})->.beaches;
+.beaches out tags center 80;
+nwr["amenity"="parking"](around.beaches:${PARKING_NEAR_KM * 1000});
+out center 1000;`;
   const failures = [];
   for (const url of OVERPASS_URLS) {
     try {
-      json = await getJson(url, { method: "POST", body: new URLSearchParams({ data: query }) });
-      break;
+      const json = await getJson(url, { method: "POST", body: new URLSearchParams({ data: query }), timeout: 30000 });
+      return parseOverpass(json, center);
     } catch (err) {
       failures.push(err.message);
     }
   }
-  if (!json) throw new Error(`Couldn't load beaches (${failures.join("; ")})`);
-  return parseOverpass(json, center);
+  throw new Error(`Couldn't load beaches: the map servers are busy (${failures.join("; ")})`);
 }
 
 function parseOverpass(json, center) {
@@ -94,14 +105,64 @@ function weatherAt(hours, time) {
   return hours.reduce((best, h) => (Math.abs(h.time - time) < Math.abs(best.time - time) ? h : best));
 }
 
-// Turns a town, address or zip code into { lat, lon, label }.
-async function geocode(text) {
-  const params = new URLSearchParams({ q: text, format: "json", limit: "1" });
-  const [hit] = await getJson(`https://nominatim.openstreetmap.org/search?${params}`, {
-    headers: { "Accept-Language": navigator.language || "en" },
+const US_ZIP_RE = /^\d{5}(-\d{4})?$/;
+
+// US zip codes: Zippopotam.us knows every one and answers fast.
+async function zipLookup(text) {
+  const zip = text.slice(0, 5);
+  const json = await getJson(`https://api.zippopotam.us/us/${zip}`).catch((err) => {
+    if (/ 404$/.test(err.message)) return null; // not a real zip
+    throw err;
   });
-  if (!hit) throw new Error(`Couldn't find "${text}"`);
+  const place = json && json.places && json.places[0];
+  if (!place) return null;
+  return {
+    lat: Number(place.latitude),
+    lon: Number(place.longitude),
+    label: `${place["place name"]}, ${place["state abbreviation"]} ${zip}`,
+  };
+}
+
+async function nominatimLookup(text) {
+  const params = new URLSearchParams({ format: "json", limit: "1", "accept-language": navigator.language || "en" });
+  if (US_ZIP_RE.test(text)) {
+    params.set("postalcode", text.slice(0, 5));
+    params.set("countrycodes", "us");
+  } else {
+    params.set("q", text);
+  }
+  const [hit] = await getJson(`https://nominatim.openstreetmap.org/search?${params}`);
+  if (!hit) return null;
   return { lat: Number(hit.lat), lon: Number(hit.lon), label: hit.display_name.split(",").slice(0, 2).join(",") };
+}
+
+async function photonLookup(text) {
+  const params = new URLSearchParams({ q: text, limit: "1" });
+  const json = await getJson(`https://photon.komoot.io/api/?${params}`);
+  const hit = json.features && json.features[0];
+  if (!hit) return null;
+  const p = hit.properties || {};
+  const [lon, lat] = hit.geometry.coordinates;
+  return { lat, lon, label: [p.name || p.city, p.state || p.country].filter(Boolean).join(", ") || text };
+}
+
+// Turns a town, address or zip code into { lat, lon, label }, trying several services in turn.
+async function geocode(input) {
+  const text = input.trim();
+  const lookups = US_ZIP_RE.test(text) ? [zipLookup, nominatimLookup, photonLookup] : [nominatimLookup, photonLookup];
+  const failures = [];
+  for (const lookup of lookups) {
+    try {
+      const hit = await lookup(text);
+      if (hit && Number.isFinite(hit.lat) && Number.isFinite(hit.lon)) return hit;
+    } catch (err) {
+      failures.push(err.message);
+    }
+  }
+  if (failures.length === lookups.length) {
+    throw new Error(`Place search isn't reachable right now (${failures.join("; ")}). Try "Use my location".`);
+  }
+  throw new Error(`Couldn't find "${text}". Try a town name or zip code.`);
 }
 
 // --- Reports -------------------------------------------------------------
@@ -173,5 +234,5 @@ async function sendReport({ beachId, crowd, parking, note, slot }) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { parseOverpass, weatherAt };
+  module.exports = { parseOverpass, weatherAt, geocode };
 }

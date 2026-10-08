@@ -28,8 +28,9 @@ function distanceKm(a, b) {
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
-// Rough drive time: roads wind ~30% more than a straight line, ~40 km/h average near the coast.
-const driveMinutes = (km) => Math.max(1, Math.round(((km * 1.3) / 40) * 60));
+// Rough drive time: roads wind ~30% more than a straight line. Short trips are mostly town streets
+// (~30 km/h); longer ones are mostly highway, so the average speed rises with distance, up to 70 km/h.
+const driveMinutes = (km) => Math.max(1, Math.round(((km * 1.3) / Math.min(70, 30 + km * 1.5)) * 60));
 
 const isWeekend = (date) => date.getDay() === 0 || date.getDay() === 6;
 
