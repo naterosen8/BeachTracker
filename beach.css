@@ -135,3 +135,9 @@ button:disabled { opacity: .6; cursor: wait; }
 .choice input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .note-label { display: grid; gap: 6px; }
 .report-msg { font-size: 15px; color: var(--muted); }
+
+.lots { font-size: 15px; margin: 0 0 8px; }
+.lots summary { cursor: pointer; color: var(--accent); }
+.lots ul { margin: 6px 0; padding-left: 20px; }
+.lots li { margin: 2px 0; }
+.lots .fine { margin: 4px 0 0; font-size: 13px; }

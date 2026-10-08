@@ -7,6 +7,30 @@ the weather forecast and past reports for that beach.
 
 Plain HTML, CSS and JavaScript. No build step.
 
+## Santa Barbara first
+
+The site opens on Santa Barbara. Its main public beaches come from a hand-checked list
+(`js/santa-barbara.js`) instead of map data alone, which gets this area wrong (Hendry's and
+Arroyo Burro listed as two beaches, a private beach included, Goleta Beach missing, almost no parking
+details). Other mapped beaches nearby (More Mesa, Ellwood, ...) are added after it.
+
+Parking for each beach lists the official lots, spaces, rates and hours:
+
+- **City waterfront lots** (Leadbetter, Harbor West, Harbor Main, Stearns Wharf, Garden Street,
+  Palm Park, Cabrillo East and West, SBCC La Playa): rates and hours from the City's
+  [FY2026 Waterfront fee schedule](https://santabarbaraca.gov/sites/default/files/2026-02/FY26%20Waterfront%20Harbor%20Slip,%20Mooring,%20and%20User%20Fees%20-%20Full%20List%20of%20Fees.pdf)
+  ($3.50/hr, $20/day max, 8 a.m.–10 p.m.; Stearns Wharf 90 min free then $4/hr); space counts from
+  the City's [lot maps](https://santabarbaraca.gov/things-do/waterfront/waterfront-parking).
+- **County beach parks** (Arroyo Burro, Goleta Beach, Lookout Park, Rincon Beach Park): hours
+  (8 a.m.–sunset) and seasonal lifeguards from [County Parks](https://www.countyofsb.org/cd-parks-arroyo-burro-beach);
+  the county [fee schedule](https://www.countyofsb.org/1096/Fee-Schedule) charges no day-use fee at these parks.
+- **Carpinteria State Beach**: $10 vehicle day use, sunrise–sunset, no dogs on the beach, from
+  [California State Parks](https://www.parks.ca.gov/?page_id=599).
+- Street parking (Butterfly Beach, Isla Vista) and Carpinteria's Linden Ave lots from OpenStreetMap.
+
+Santa Barbara has no live parking data to use: the City's real-time downtown parking page has been
+retired, and the waterfront lots never had live counts. Live parking here comes from beachgoer reports.
+
 ## How it works
 
 - **Beaches and parking**: OpenStreetMap (Overpass API): named beaches within 10–50 km, and parking

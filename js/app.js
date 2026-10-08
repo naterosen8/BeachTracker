@@ -64,6 +64,13 @@ function describe(beach, when) {
   let parking;
   if (useLive && live.parking) {
     parking = { text: `${PARKING_LABELS[live.parking]} (reported)`, score: { plenty: 3, some: 2, full: 0 }[live.parking] };
+  } else if (beach.curated) {
+    const street = beach.lots.every((l) => l.street);
+    const roomy = beach.parkingSpaces >= 200 || beach.lots.some((l) => l.fee === "free" && !l.street);
+    parking = {
+      text: `${sbParkingSummary(beach)}${crowd >= 4 ? " (busy: may fill up)" : ""}`,
+      score: (street ? 1 : roomy ? 2.5 : 2) - (crowd >= 4 ? 1 : 0),
+    };
   } else if (beach.parkingLots) {
     const lots = `${beach.parkingLots} lot${beach.parkingLots > 1 ? "s" : ""} nearby${beach.paidParking ? " (some paid)" : ""}`;
     parking = crowd >= 4
@@ -147,8 +154,13 @@ function card(v, reportOpen) {
     if (weather.uv != null) bits.push(`UV ${Math.round(weather.uv)}`);
     facts.append(el("li", `Weather then: ${bits.join(", ")}`));
   }
-  if (beach.lifeguard === "yes") facts.append(el("li", "Lifeguarded"));
+  if (beach.lifeguards === "seasonal") facts.append(el("li", "Seasonal lifeguards"));
+  else if (beach.lifeguard === "yes") facts.append(el("li", "Lifeguarded"));
+  if (beach.dogArea) facts.append(el("li", "Has a dog area"));
+  if (beach.noDogsOnBeach) facts.append(el("li", "No dogs on the beach"));
   if (beach.dogs === "yes" || beach.dogs === "leashed") facts.append(el("li", "Dogs allowed"));
+
+  if (beach.curated) node.querySelector(".facts").after(lotList(beach));
 
   const notes = node.querySelector(".notes");
   for (const n of (live && live.notes) || []) notes.append(el("li", `“${n.note}” (${ago(n.time)})`));
@@ -159,6 +171,28 @@ function card(v, reportOpen) {
 
   buildReportForm(node, beach, reportOpen);
   return node;
+}
+
+// Every parking option for a hand-checked beach, each with a link to find it on a map.
+function lotList(beach) {
+  const details = el("details", null, "lots");
+  details.append(el("summary", `Where to park (${beach.lots.length})`));
+  const list = el("ul");
+  for (const lot of beach.lots) {
+    const li = el("li");
+    const bits = [lot.spaces && `${lot.spaces} spaces`, lot.fee, lot.hours, lot.note].filter(Boolean);
+    li.append(el("strong", lot.name), document.createTextNode(bits.length ? ` · ${bits.join(" · ")}` : ""));
+    if (!lot.street) {
+      const a = el("a", "map");
+      a.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lot.name}, ${beach.name}, Santa Barbara County, CA`)}`;
+      a.target = "_blank";
+      a.rel = "noopener";
+      li.append(document.createTextNode(" · "), a);
+    }
+    list.append(li);
+  }
+  details.append(list, el("p", "Rates and hours from the City of Santa Barbara, Santa Barbara County Parks and California State Parks. Check posted signs.", "fine"));
+  return details;
 }
 
 function choice(name, value, label) {
@@ -305,15 +339,55 @@ async function refreshMeters() {
   }
 }
 
+function beachesStatus(radius, center) {
+  return `${state.beaches.length} beaches within ${fmtDistance(radius)} of ${center.label}.`;
+}
+
 async function load(center) {
   state.center = center;
   state.meters = {};
   setStatus(`Finding beaches near ${center.label}…`);
   let radius = Number($("radius").value);
+  state.weather = null;
+  // Weather fills in when it arrives; it never holds up the list.
+  getWeather(center)
+    .then((w) => {
+      if (state.center !== center) return;
+      state.weather = w;
+      if (state.beaches.length) {
+        render();
+        setStatus(beachesStatus(radius, center));
+      }
+    })
+    .catch(() => {});
+
+  // Around Santa Barbara, show the hand-checked beaches right away, then add any other mapped
+  // beaches once the (slower) map lookup answers.
+  if (!demo && inSantaBarbara(center)) {
+    state.beaches = sbBeaches(center, radius);
+    $("plan").hidden = false;
+    await refreshReports();
+    setStatus(beachesStatus(radius, center));
+    findBeaches(center, radius)
+      .then(async (found) => {
+        if (state.center !== center) return; // a newer search took over
+        state.beaches = mergeWithCurated(state.beaches.filter((b) => b.curated), found);
+        await refreshReports();
+        setStatus(beachesStatus(radius, center));
+      })
+      .catch(() => {}); // the hand-checked list is already showing
+    return;
+  }
+
   const lookup = (km) => (demo
     ? Promise.resolve(DEMO_BEACHES.map((b) => ({ ...b, distanceKm: distanceKm(center, b) })).filter((b) => b.distanceKm <= km))
-    : findBeaches(center, km));
-  const weather = getWeather(center).catch(() => null);
+    : findBeaches(center, km)
+      .then((found) => mergeWithCurated(sbBeaches(center, km), found))
+      .catch((err) => {
+        const curated = sbBeaches(center, km);
+        if (curated.length) return curated;
+        throw err;
+      }));
   let beaches;
   try {
     beaches = await lookup(radius);
@@ -329,8 +403,8 @@ async function load(center) {
     setStatus(`${err.message}. Try again in a minute.`, true);
     return;
   }
+  if (state.center !== center) return;
   state.beaches = beaches;
-  state.weather = await weather;
   $("plan").hidden = false;
   if (!state.beaches.length) {
     $("beaches").replaceChildren();
@@ -340,7 +414,7 @@ async function load(center) {
   }
   await refreshReports();
   refreshMeters();
-  setStatus(`${state.beaches.length} beaches within ${fmtDistance(radius)} of ${center.label}${state.weather ? "" : " (weather unavailable)"}.`);
+  setStatus(beachesStatus(radius, center));
 }
 
 $("near-me").addEventListener("click", async () => {
@@ -382,4 +456,5 @@ setInterval(() => {
   }
 }, REFRESH_MS);
 
-if (demo) load(DEMO_CENTER);
+// Start on Santa Barbara; "Use my location" or a search looks elsewhere.
+load(demo ? DEMO_CENTER : SB_CENTER);
