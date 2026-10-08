@@ -11,6 +11,12 @@ Plain HTML, CSS and JavaScript. No build step.
 
 - **Beaches and parking**: OpenStreetMap (Overpass API): named beaches within 10–50 km, and parking
   lots within 600 m of each.
+- **Live street parking (Los Angeles only)**: City of Los Angeles open data (LADOT parking meter
+  occupancy), updated every minute by sensors in the meters. For beaches in the city (e.g. Venice),
+  the card shows how many sensor-equipped street meters within 800 m are free right now. It covers
+  street meters only, not beach lots, and ignores sensors that haven't reported for 24 hours.
+  Checked and not used: Santa Monica's live lot API has been shut down, and Laguna Beach's
+  parking app doesn't publish its data. Other beach cities checked publish no live counts.
 - **Weather**: Open-Meteo hourly forecast (temperature, rain, wind, UV) for the time you plan to go.
 - **Place search**: OpenStreetMap Nominatim, or the browser's location.
 - **Live reports**: `api/reports.js`, a Vercel function storing reports in Upstash Redis. Recent

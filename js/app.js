@@ -13,6 +13,7 @@ const state = {
   reports: {},
   history: {},
   shared: true,
+  meters: {}, // live LA street-meter counts by beach id
 };
 let map = null;
 let markers = null;
@@ -74,8 +75,16 @@ function describe(beach, when) {
     parking = { text: "No parking info yet: be the first to report it", score: 1 };
   }
 
+  // Live city sensor counts are about right now, so they only steer the pick when going now.
+  const meters = state.meters[beach.id];
+  if (meters && goingNow && !(useLive && live.parking)) {
+    const share = meters.free / meters.total;
+    parking = { ...parking, score: share >= 0.3 ? 3 : share >= 0.1 ? 2 : 0.5 };
+  }
+
   return {
     beach,
+    meters,
     live,
     useLive,
     crowd,
@@ -108,7 +117,7 @@ function render() {
 }
 
 function card(v, reportOpen) {
-  const { beach, live, useLive, crowd, est, weather, parking } = v;
+  const { beach, meters, live, useLive, crowd, est, weather, parking } = v;
   const node = $("beach-card").content.firstElementChild.cloneNode(true);
   const level = Math.min(5, Math.max(1, Math.round(crowd)));
   node.dataset.id = beach.id;
@@ -128,6 +137,10 @@ function card(v, reportOpen) {
 
   const facts = node.querySelector(".facts");
   facts.append(el("li", `Parking: ${parking.text}`));
+  if (meters) {
+    facts.append(el("li", `Street meters within ${imperial ? "½ mile" : "800 m"}: ${meters.free} of ${meters.total} free right now ` +
+      `(City of LA sensors, updated ${ago(meters.newest)})`));
+  }
   if (live && !useLive) facts.append(el("li", `Right now: ${crowdLabel(live.crowd)} (${live.count} live report${live.count > 1 ? "s" : ""})`));
   if (weather) {
     const bits = [fmtTemp(weather.tempC), `${Math.round(weather.precipProb || 0)}% rain`];
@@ -279,8 +292,22 @@ async function refreshReports() {
   render();
 }
 
+// Live street-meter counts, where the city publishes them. Optional: failures just hide the line.
+async function refreshMeters() {
+  const beaches = state.beaches;
+  try {
+    const meters = await getMeters(beaches);
+    if (beaches !== state.beaches) return; // a newer search replaced these beaches
+    state.meters = meters;
+    if (Object.keys(meters).length) render();
+  } catch {
+    state.meters = {};
+  }
+}
+
 async function load(center) {
   state.center = center;
+  state.meters = {};
   setStatus(`Finding beaches near ${center.label}…`);
   let radius = Number($("radius").value);
   const lookup = (km) => (demo
@@ -312,6 +339,7 @@ async function load(center) {
     return;
   }
   await refreshReports();
+  refreshMeters();
   setStatus(`${state.beaches.length} beaches within ${fmtDistance(radius)} of ${center.label}${state.weather ? "" : " (weather unavailable)"}.`);
 }
 
@@ -348,7 +376,10 @@ $("radius").addEventListener("change", () => state.center && load(state.center))
 setInterval(() => {
   // Don't rebuild the list under someone halfway through a report.
   const reporting = document.querySelector(".report:not([hidden])");
-  if (document.visibilityState === "visible" && !reporting) refreshReports().catch(() => {});
+  if (document.visibilityState === "visible" && !reporting) {
+    refreshReports().catch(() => {});
+    refreshMeters();
+  }
 }, REFRESH_MS);
 
 if (demo) load(DEMO_CENTER);
