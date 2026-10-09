@@ -23,14 +23,8 @@
 
     <div class="plan" id="plan" hidden>
       <label>Going
-        <select id="when">
-          <option value="0" selected>now</option>
-          <option value="1">in 1 hour</option>
-          <option value="2">in 2 hours</option>
-          <option value="3">in 3 hours</option>
-          <option value="tomorrow-10">tomorrow morning</option>
-          <option value="tomorrow-14">tomorrow afternoon</option>
-        </select>
+        <select id="day" aria-label="Day"></select>
+        <select id="time" aria-label="Time"></select>
       </label>
       <label>Sort by
         <select id="sort">
@@ -47,15 +41,25 @@
           <option value="50">50 km</option>
         </select>
       </label>
+      <fieldset class="filters">
+        <legend class="sr-only">Show only</legend>
+        <label class="chip"><input type="checkbox" id="f-fav"><span>★ My beaches</span></label>
+        <label class="chip"><input type="checkbox" id="f-guard"><span>Lifeguards</span></label>
+        <label class="chip"><input type="checkbox" id="f-dogs"><span>Dogs OK</span></label>
+        <label class="chip"><input type="checkbox" id="f-free"><span>Free parking</span></label>
+      </fieldset>
     </div>
 
-    <p id="status" class="status" role="status"></p>
+    <div class="statusbar">
+      <p id="status" class="status" role="status"></p>
+      <button type="button" id="refresh" class="small" hidden>Refresh</button>
+    </div>
     <p id="shared-note" class="fine" hidden>Reports are saved on this device only until the shared report store is set up (see README).</p>
 
     <div id="map" class="map" hidden></div>
     <ol id="beaches" class="beaches"></ol>
 
-    <p class="fine">Beaches and parking from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors. Weather from <a href="https://open-meteo.com/">Open-Meteo</a>. Live street-meter occupancy in Los Angeles from <a href="https://data.lacity.org/">LADOT open data</a>. Crowd estimates are guesses: check live reports and conditions before you go, and swim near lifeguards.</p>
+    <p class="fine">Beaches and parking from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors. Weather, waves, water temperature and tides from <a href="https://open-meteo.com/">Open-Meteo</a> (tides are modelled: check a tide table before tidepooling or walking around points). Live street-meter occupancy in Los Angeles from <a href="https://data.lacity.org/">LADOT open data</a>. Crowd estimates are guesses: check live reports and conditions before you go, and swim near lifeguards.</p>
   </main>
 
   <template id="beach-card">
@@ -63,6 +67,7 @@
       <div class="card-head">
         <h2 class="name"></h2>
         <span class="away"></span>
+        <button type="button" class="fav" aria-pressed="false">☆</button>
       </div>
       <div class="crowd">
         <span class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
@@ -70,11 +75,16 @@
         <span class="tag"></span>
       </div>
       <p class="basis"></p>
+      <div class="day-forecast">
+        <div class="bars" role="group" aria-label="Crowd estimate by hour"></div>
+        <p class="day-summary"></p>
+      </div>
       <ul class="facts"></ul>
       <ul class="notes"></ul>
       <div class="actions">
         <a class="button directions" target="_blank" rel="noopener">Directions</a>
         <button type="button" class="report-toggle">I'm here: report</button>
+        <button type="button" class="share">Share</button>
       </div>
       <form class="report" hidden>
         <fieldset>
@@ -98,6 +108,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="js/crowd.js"></script>
+  <script src="js/conditions.js"></script>
   <script src="js/data.js"></script>
   <script src="js/meters.js"></script>
   <script src="js/santa-barbara.js"></script>

@@ -41,7 +41,15 @@ retired, and the waterfront lots never had live counts. Live parking here comes 
   street meters only, not beach lots, and ignores sensors that haven't reported for 24 hours.
   Checked and not used: Santa Monica's live lot API has been shut down, and Laguna Beach's
   parking app doesn't publish its data. Other beach cities checked publish no live counts.
-- **Weather**: Open-Meteo hourly forecast (temperature, rain, wind, UV) for the time you plan to go.
+- **Weather**: Open-Meteo hourly forecast (temperature, rain, wind, UV) for the time you plan to go,
+  up to a week ahead.
+- **Surf, water temperature and tides** (`js/conditions.js`): Open-Meteo Marine hourly wave height
+  and period, sea surface temperature and sea level, for every beach in one request. Tide highs and
+  lows are the turning points of the modelled sea level; only their times are shown, since the model
+  measures from mean sea level rather than the tide-table zero.
+- **Sunrise and sunset**: worked out on the device from the beach's position and date.
+- **Hour by hour**: each beach shows the estimated crowd from 6 AM to 8 PM on the chosen day, with
+  when it's busiest and quieter. Tap an hour to plan for it.
 - **Place search**: OpenStreetMap Nominatim, or the browser's location.
 - **Live reports**: `api/reports.js`, a Vercel function storing reports in Upstash Redis. Recent
   reports (last 3 hours, newer ones count more) give the live crowd and parking. Every report also
@@ -49,6 +57,11 @@ retired, and the waterfront lots never had live counts. Live parking here comes 
 - **Estimates** (`js/crowd.js`): typical hourly pattern × weekend boost × season (flipped south of
   the equator) × weather, blended with the beach's own past reports once there are at least 3.
 - **Directions**: opens Google Maps driving directions to the beach.
+- **My beaches and filters**: star beaches to keep them (saved on this device), and filter to your
+  beaches, lifeguarded beaches, dog-friendly beaches or free parking.
+- **Links**: `?q=Goleta` searches a place; `?at=34.41,-119.83&near=Goleta&beach=<id>` opens a spot
+  with one beach highlighted (what the Share button sends). The site also remembers the last place
+  you looked at.
 
 Reports are checked against your location (must be within 2 km of the beach), limited to one per
 beach every 10 minutes per visitor, and notes are capped at 140 characters.
@@ -74,7 +87,7 @@ node --test tests/*.test.js   # run the tests
 1. [x] Find beaches near you, crowd estimates, parking, weather, directions
 2. [x] Live beachgoer reports, with estimates that learn from past reports
 3. [ ] Alerts: tell me when my favorite beach gets busy or parking fills up
-4. [ ] Favorites and a "my beaches" view
+4. [x] Favorites and a "my beaches" view, filters, share links, plan up to a week ahead
 5. [ ] Photos with reports, and up/down votes on reports to weed out bad ones
-6. [ ] Tides, water quality and surf conditions
+6. [ ] Tides, water quality and surf conditions (tides, surf and water temperature done; water quality to do)
 7. [ ] Accounts and reporter reputation

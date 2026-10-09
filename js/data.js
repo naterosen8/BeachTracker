@@ -1,4 +1,4 @@
-// Loads beaches and parking (OpenStreetMap), weather (Open-Meteo), place search (Zippopotam,
+// Loads beaches and parking (OpenStreetMap), weather and marine forecasts (Open-Meteo), place search (Zippopotam,
 // Nominatim, Photon), and beachgoer reports (our /api/reports, or this device's storage when
 // that isn't set up).
 
@@ -155,18 +155,21 @@ function parseOverpass(json, center) {
     b.parkingLots = near.length;
     b.parkingSpaces = near.reduce((n, p) => n + (p.capacity || 0), 0);
     b.paidParking = near.some((p) => p.fee === "yes");
+    b.freeParking = near.some((p) => p.fee === "no");
     b.distanceKm = distanceKm(center, b);
   }
   return beaches.sort((a, b) => a.distanceKm - b.distanceKm);
 }
 
-// Hourly weather for the next two days around { lat, lon }: [{ time: ms, tempC, precipMm, precipProb, windKmh }].
+const FORECAST_DAYS = 7;
+
+// Hourly weather for the next week around { lat, lon }: [{ time: ms, tempC, precipMm, precipProb, windKmh }].
 async function getWeather(center) {
   const params = new URLSearchParams({
     latitude: center.lat.toFixed(3),
     longitude: center.lon.toFixed(3),
     hourly: "temperature_2m,precipitation,precipitation_probability,wind_speed_10m,uv_index",
-    forecast_days: "2",
+    forecast_days: String(FORECAST_DAYS),
     timeformat: "unixtime",
   });
   const json = await getJson(`https://api.open-meteo.com/v1/forecast?${params}`);
@@ -185,6 +188,42 @@ async function getWeather(center) {
 function weatherAt(hours, time) {
   if (!hours || !hours.length) return null;
   return hours.reduce((best, h) => (Math.abs(h.time - time) < Math.abs(best.time - time) ? h : best));
+}
+
+const MARINE_MAX_BEACHES = 40;
+
+// Hourly waves, water temperature and sea level (for tides) for the next week, for up to
+// MARINE_MAX_BEACHES beaches in one request: { beachId: [{ time, waveM, periodS, waterC, level }] }.
+// Beaches the model has no sea data for are left out.
+async function getMarine(beaches, fetchJson = getJson) {
+  const some = beaches.slice(0, MARINE_MAX_BEACHES);
+  if (!some.length) return {};
+  const params = new URLSearchParams({
+    latitude: some.map((b) => b.lat.toFixed(3)).join(","),
+    longitude: some.map((b) => b.lon.toFixed(3)).join(","),
+    hourly: "wave_height,wave_period,sea_surface_temperature,sea_level_height_msl",
+    forecast_days: String(FORECAST_DAYS),
+    timeformat: "unixtime",
+  });
+  const json = await fetchJson(`https://marine-api.open-meteo.com/v1/marine?${params}`);
+  return parseMarine(some, Array.isArray(json) ? json : [json]);
+}
+
+function parseMarine(beaches, results) {
+  const out = {};
+  beaches.forEach((b, i) => {
+    const h = results[i] && results[i].hourly;
+    if (!h || !h.time) return;
+    const hours = h.time.map((t, j) => ({
+      time: t * 1000,
+      waveM: h.wave_height ? h.wave_height[j] : null,
+      periodS: h.wave_period ? h.wave_period[j] : null,
+      waterC: h.sea_surface_temperature ? h.sea_surface_temperature[j] : null,
+      level: h.sea_level_height_msl ? h.sea_level_height_msl[j] : null,
+    }));
+    if (hours.some((x) => x.waveM != null || x.level != null)) out[b.id] = hours;
+  });
+  return out;
 }
 
 const US_ZIP_RE = /^\d{5}(-\d{4})?$/;
@@ -316,5 +355,5 @@ async function sendReport({ beachId, crowd, parking, note, slot }) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { parseOverpass, parsePhotonBeaches, findBeaches, weatherAt, geocode };
+  module.exports = { parseOverpass, parsePhotonBeaches, findBeaches, weatherAt, geocode, getMarine, parseMarine };
 }

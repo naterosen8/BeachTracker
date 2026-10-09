@@ -141,3 +141,51 @@ button:disabled { opacity: .6; cursor: wait; }
 .lots ul { margin: 6px 0; padding-left: 20px; }
 .lots li { margin: 2px 0; }
 .lots .fine { margin: 4px 0 0; font-size: 13px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.small { padding: 4px 12px; font-size: 15px; }
+
+.filters { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+.chip input { position: absolute; opacity: 0; }
+.chip span { display: inline-block; border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 15px; background: var(--surface); }
+.chip input:checked + span { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.statusbar { display: flex; align-items: center; gap: 12px; }
+.statusbar .status { flex: 1; }
+
+.card { position: relative; }
+.card-head { padding-right: 34px; }
+.card-head .fav {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  border: 0;
+  background: none;
+  padding: 0 4px;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--muted);
+}
+.card-head .fav[aria-pressed="true"] { color: #e0a800; }
+.card.focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+.empty { color: var(--muted); list-style: none; padding: 12px 0; }
+
+.day-forecast { margin: 4px 0 10px; }
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 56px; padding-bottom: 16px; position: relative; }
+.bar {
+  flex: 1;
+  height: var(--h);
+  min-height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px 3px 0 0;
+  background: var(--level);
+  opacity: .75;
+  position: relative;
+}
+.bar:hover, .bar.picked { opacity: 1; }
+.bar.picked { box-shadow: 0 0 0 2px var(--text); }
+.bar.past { opacity: .3; }
+.bar span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); padding-top: 2px; }
+.day-summary { color: var(--muted); font-size: 14px; margin: 2px 0 0; }

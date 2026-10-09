@@ -121,3 +121,19 @@ test("findBeaches falls back to Photon when Overpass is down, then skips Overpas
   await findBeaches(center, 25);
   assert.ok(!hosts.some((h) => h.includes("overpass")), `asked ${hosts}`);
 });
+
+test("marine data for several beaches in one request, skipping ones with no sea data", async () => {
+  const { getMarine } = require("../js/data.js");
+  const beaches = [{ id: "a", lat: 34.4, lon: -119.7 }, { id: "b", lat: 34.5, lon: -119.2 }];
+  let asked;
+  const marine = await getMarine(beaches, async (url) => {
+    asked = new URL(url);
+    return [
+      { hourly: { time: [0, 3600], wave_height: [0.8, 0.9], wave_period: [11, 12], sea_surface_temperature: [19, 19.2], sea_level_height_msl: [0.3, 0.6] } },
+      { hourly: { time: [0, 3600], wave_height: [null, null], sea_level_height_msl: [null, null] } },
+    ];
+  });
+  assert.strictEqual(asked.searchParams.get("latitude"), "34.400,34.500");
+  assert.deepStrictEqual(Object.keys(marine), ["a"]);
+  assert.deepStrictEqual(marine.a[1], { time: 3600e3, waveM: 0.9, periodS: 12, waterC: 19.2, level: 0.6 });
+});
